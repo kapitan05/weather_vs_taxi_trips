@@ -1,4 +1,5 @@
 import logging
+import os
 
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col
@@ -7,10 +8,10 @@ logger = logging.getLogger(__name__)
 
 TLC_URL = "https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2023-01.parquet"
 
-DB_URL = "jdbc:postgresql://postgres-dwh:5432/nyc_weather_taxi"
+DB_URL = os.getenv("DB_URL", "jdbc:postgresql://postgres-dwh:5432/nyc_weather_taxi")
 DB_PROPERTIES = {
-    "user": "data_engineer",
-    "password": "password123",
+    "user": os.getenv("DB_USER", "data_engineer"),
+    "password": os.getenv("DB_PASSWORD", "password123"),
     "driver": "org.postgresql.Driver",
 }
 

@@ -3,8 +3,10 @@ FROM jupyter/pyspark-notebook:latest
 USER root
 WORKDIR /app
 
-# Install only the deps not bundled in the base image
-RUN pip install requests psycopg2-binary --no-cache-dir
+RUN pip install uv --no-cache-dir
+
+COPY pyproject.toml uv.lock ./
+RUN uv sync --no-dev --frozen
 
 COPY src/ ./src/
 COPY main.py ./
