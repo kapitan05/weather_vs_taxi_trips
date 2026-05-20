@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NYC Weather vs Taxi Trips</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f0f2f5;
+      color: #222;
+      min-height: 100vh;
+    }
+    header {
+      background: #fff;
+      border-bottom: 1px solid #e0e0e0;
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      flex-wrap: wrap;
+    }
+    header h1 {
+      font-size: 1.3rem;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .controls label {
+      font-size: 0.875rem;
+      color: #555;
+    }
+    .controls input[type="date"] {
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: 0.875rem;
+      color: #222;
+      background: #fafafa;
+      cursor: pointer;
+    }
+    .controls input[type="date"]:focus {
+      outline: 2px solid #4a90e2;
+      outline-offset: 1px;
+    }
+    .controls button {
+      background: #4a90e2;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 7px 18px;
+      font-size: 0.875rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .controls button:hover { background: #3178c6; }
+    .controls button:disabled { background: #a0b8d8; cursor: not-allowed; }
+
+    main {
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    .card {
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.10), 0 2px 12px rgba(0,0,0,0.06);
+      padding: 20px 24px 24px;
+    }
+    .card h2 {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 16px;
+      color: #333;
+    }
+    .chart-wrap {
+      position: relative;
+      height: 350px;
+    }
+    .status {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      font-size: 0.95rem;
+      color: #888;
+    }
+    .spinner {
+      width: 28px;
+      height: 28px;
+      border: 3px solid #e0e0e0;
+      border-top-color: #4a90e2;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      margin-right: 10px;
+      flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>NYC Weather vs Taxi Trips</h1>
+    <div class="controls">
+      <label for="startDate">From</label>
+      <input type="date" id="startDate" value="2023-01-01">
+      <label for="endDate">To</label>
+      <input type="date" id="endDate" value="2023-01-31">
+      <button id="applyBtn">Apply</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="card">
+      <h2>Trips &amp; Temperature Over Time</h2>
+      <div class="chart-wrap" id="wrap-timeseries">
+        <canvas id="chart-timeseries"></canvas>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Trip Count vs Temperature</h2>
+      <div class="chart-wrap" id="wrap-scatter">
+        <canvas id="chart-scatter"></canvas>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Avg Trip Count by Weather Condition</h2>
+      <div class="chart-wrap" id="wrap-bar">
+        <canvas id="chart-bar"></canvas>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const WMO = {
+      0: "Clear", 1: "Mainly Clear", 2: "Partly Cloudy", 3: "Overcast",
+      45: "Foggy", 48: "Icy Fog",
+      51: "Light Drizzle", 53: "Drizzle", 55: "Heavy Drizzle",
+      61: "Light Rain", 63: "Rain", 65: "Heavy Rain",
+      71: "Light Snow", 73: "Snow", 75: "Heavy Snow",
+      80: "Rain Showers", 81: "Heavy Showers", 82: "Violent Showers",
+      85: "Snow Showers", 86: "Heavy Snow Showers",
+      95: "Thunderstorm", 96: "Thunderstorm+Hail",
+    };
+    function wmoLabel(code) { return WMO[code] ?? `Code ${code}`; }
+
+    const charts = { timeseries: null, scatter: null, bar: null };
+
+    function destroyChart(key) {
+      if (charts[key]) { charts[key].destroy(); charts[key] = null; }
+    }
+
+    function showStatus(wrapId, msg, loading = false) {
+      const wrap = document.getElementById(wrapId);
+      wrap.innerHTML = loading
+        ? `<div class="status"><div class="spinner"></div>${msg}</div>`
+        : `<div class="status">${msg}</div>`;
+    }
+
+    function restoreCanvas(wrapId, canvasId) {
+      const wrap = document.getElementById(wrapId);
+      wrap.innerHTML = `<canvas id="${canvasId}"></canvas>`;
+    }
+
+    function buildTimeseries(data) {
+      destroyChart("timeseries");
+      restoreCanvas("wrap-timeseries", "chart-timeseries");
+      const labels = data.map(r => r.record_date);
+      const trips = data.map(r => r.trip_count);
+      const temps = data.map(r => r.avg_temperature);
+      const ctx = document.getElementById("chart-timeseries").getContext("2d");
+      charts.timeseries = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels,
+          datasets: [
+            {
+              label: "Trips",
+              data: trips,
+              yAxisID: "yTrips",
+              borderColor: "#4a90e2",
+              backgroundColor: "rgba(74,144,226,0.08)",
+              tension: 0.3,
+              pointRadius: 2,
+              fill: true,
+            },
+            {
+              label: "Avg Temp °C",
+              data: temps,
+              yAxisID: "yTemp",
+              borderColor: "#f5a623",
+              backgroundColor: "rgba(245,166,35,0.08)",
+              tension: 0.3,
+              pointRadius: 2,
+              fill: false,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: "index", intersect: false },
+          plugins: { legend: { position: "top" } },
+          scales: {
+            x: {
+              ticks: { maxTicksLimit: 12, maxRotation: 45 },
+              grid: { color: "#f0f0f0" },
+            },
+            yTrips: {
+              type: "linear",
+              position: "left",
+              title: { display: true, text: "Trip Count" },
+              grid: { color: "#f0f0f0" },
+            },
+            yTemp: {
+              type: "linear",
+              position: "right",
+              title: { display: true, text: "Avg Temp °C" },
+              grid: { drawOnChartArea: false },
+            },
+          },
+        },
+      });
+    }
+
+    function buildScatter(data) {
+      destroyChart("scatter");
+      restoreCanvas("wrap-scatter", "chart-scatter");
+      const points = data.map(r => ({ x: r.avg_temperature, y: r.trip_count }));
+      const ctx = document.getElementById("chart-scatter").getContext("2d");
+      charts.scatter = new Chart(ctx, {
+        type: "scatter",
+        data: {
+          datasets: [{
+            label: "Day",
+            data: points,
+            backgroundColor: "rgba(74,144,226,0.55)",
+            pointRadius: 5,
+            pointHoverRadius: 7,
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            title: { display: false },
+            tooltip: {
+              callbacks: {
+                label: ctx => `Temp: ${ctx.parsed.x}°C, Trips: ${ctx.parsed.y.toLocaleString()}`,
+              },
+            },
+          },
+          scales: {
+            x: {
+              title: { display: true, text: "Avg Temperature (°C)" },
+              grid: { color: "#f0f0f0" },
+            },
+            y: {
+              title: { display: true, text: "Trip Count" },
+              grid: { color: "#f0f0f0" },
+            },
+          },
+        },
+      });
+    }
+
+    function buildBar(data) {
+      destroyChart("bar");
+      restoreCanvas("wrap-bar", "chart-bar");
+
+      // group by dominant_weathercode, compute mean trip_count
+      const groups = {};
+      for (const r of data) {
+        const code = r.dominant_weathercode;
+        if (!groups[code]) groups[code] = { sum: 0, count: 0 };
+        groups[code].sum += r.trip_count;
+        groups[code].count += 1;
+      }
+      const codes = Object.keys(groups).map(Number).sort((a, b) => a - b);
+      const labels = codes.map(wmoLabel);
+      const avgs = codes.map(c => +(groups[c].sum / groups[c].count).toFixed(1));
+
+      const ctx = document.getElementById("chart-bar").getContext("2d");
+      charts.bar = new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels,
+          datasets: [{
+            label: "Avg Trip Count",
+            data: avgs,
+            backgroundColor: "rgba(74,144,226,0.7)",
+            borderColor: "#4a90e2",
+            borderWidth: 1,
+            borderRadius: 4,
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: {
+              ticks: { maxRotation: 35 },
+              grid: { color: "#f0f0f0" },
+            },
+            y: {
+              title: { display: true, text: "Avg Trip Count" },
+              grid: { color: "#f0f0f0" },
+              beginAtZero: true,
+            },
+          },
+        },
+      });
+    }
+
+    async function fetchAndRender() {
+      const start = document.getElementById("startDate").value;
+      const end = document.getElementById("endDate").value;
+      const btn = document.getElementById("applyBtn");
+      btn.disabled = true;
+
+      // show loading in all three panels
+      ["wrap-timeseries", "wrap-scatter", "wrap-bar"].forEach(id =>
+        showStatus(id, "Loading…", true)
+      );
+
+      let data;
+      try {
+        const res = await fetch(`/api/correlation/?start=${start}&end=${end}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        data = await res.json();
+      } catch (err) {
+        ["wrap-timeseries", "wrap-scatter", "wrap-bar"].forEach(id =>
+          showStatus(id, `Error: ${err.message}`)
+        );
+        btn.disabled = false;
+        return;
+      }
+
+      if (!data || data.length === 0) {
+        ["wrap-timeseries", "wrap-scatter", "wrap-bar"].forEach(id =>
+          showStatus(id, "No data available")
+        );
+        btn.disabled = false;
+        return;
+      }
+
+      buildTimeseries(data);
+      buildScatter(data);
+      buildBar(data);
+      btn.disabled = false;
+    }
+
+    document.getElementById("applyBtn").addEventListener("click", fetchAndRender);
+    fetchAndRender();
+  </script>
+</body>
+</html>
