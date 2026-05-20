@@ -10,6 +10,7 @@ from pyspark.sql import SparkSession
 
 from src.ingest.taxi_ingest import ingest_tlc_data
 from src.ingest.weather_ingest import ingest_weather_data
+from src.transform.pipeline import run_pipeline
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,7 @@ def main() -> None:
             write_mode = "overwrite" if i == 0 else "append"
             ingest_tlc_data(spark, year=args.year, month=month, mode=write_mode)
             ingest_weather_data(spark, year=args.year, month=month, mode=write_mode)
+        run_pipeline(spark)
     except Exception:
         logger.exception("Ingestion failed")
         sys.exit(1)

@@ -11,6 +11,9 @@ RUN uv sync --no-dev --frozen -v
 COPY src/ ./src/
 COPY main.py ./
 
+RUN wget -q https://repo1.maven.org/maven2/org/postgresql/postgresql/42.6.0/postgresql-42.6.0.jar \
+    -O /home/jovyan/work/postgresql-42.6.0.jar
+
 RUN chown -R jovyan:users /app && \
     fix-permissions /home/jovyan
 
