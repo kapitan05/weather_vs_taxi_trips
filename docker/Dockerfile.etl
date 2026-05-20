@@ -6,11 +6,12 @@ WORKDIR /app
 RUN pip install uv --no-cache-dir
 
 COPY pyproject.toml uv.lock ./
-RUN uv sync --no-dev --frozen
+RUN uv sync --no-dev --frozen -v
 
 COPY src/ ./src/
 COPY main.py ./
 
-RUN chown -R jovyan:users /app
+RUN chown -R jovyan:users /app && \
+    fix-permissions /home/jovyan
 
 USER jovyan
