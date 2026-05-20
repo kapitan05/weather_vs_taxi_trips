@@ -40,6 +40,8 @@ uv sync --no-dev     # runtime only
 
 # Run tests
 uv run pytest tests/unit/ -v --cov=src
+uv run pytest tests/unit/test_foo.py::test_name -v   # single test
+uv run locust -f tests/performance/locustfile.py      # load test (needs API running)
 
 # Start API locally (needs postgres running)
 uv run uvicorn src.api.main:app --reload
@@ -54,6 +56,15 @@ docker compose -f docker-compose.prod.yml up -d       # prod (nginx :80, no Jupy
 docker compose exec etl-runner /app/.venv/bin/python /app/main.py
 ```
 
+## Env Vars
+
+Two separate sets — `.env.example` only documents compose service vars, not these:
+
+| Component | Vars |
+|-----------|------|
+| API (`src/api/db.py`) | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` (default to localhost dev) |
+| ETL (`src/ingest/`, `src/transform/`) | `DB_URL` (full JDBC string), `DB_USER`, `DB_PASSWORD` |
+
 ## Key Constraints
 
 - **Spark session** is created in `main.py` and passed into ingest/transform functions — never module-level.
@@ -62,3 +73,7 @@ docker compose exec etl-runner /app/.venv/bin/python /app/main.py
 - **JDBC driver JAR** expected at `/home/jovyan/work/postgresql-42.6.0.jar` inside the ETL container.
 - **prod credentials** come from a `.env` file (see `docker-compose.prod.yml`); dev uses hardcoded values.
 - `db-init` service runs `schema.sql` once on `docker compose up`; it depends on `postgres-dwh` being healthy.
+- **Ingest overwrite/append**: `main.py` writes first month with `mode="overwrite"`, subsequent months with `"append"`. Re-running the same range is idempotent only if the full range is identical; partial re-runs will duplicate data.
+- **Tests**: `conftest.py` patches `init_pool`/`close_pool` globally; inject fake DB rows via `make_get_conn()` — no real DB needed for unit tests.
+- **No linting config**: `pyproject.toml` only has `[tool.pytest.ini_options]`; no ruff/black/pylint rules configured.
+- **CORS**: API allows all origins (`allow_origins=["*"]`) — intentional for dev/demo.
