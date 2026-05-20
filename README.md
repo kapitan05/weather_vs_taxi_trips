@@ -1,20 +1,27 @@
-# Weather vs Taxi Trips
+# NYC Weather vs Taxi Trips
 
-End-to-end data pipeline correlating NYC yellow taxi trip volume with daily weather conditions.
+An end-to-end data engineering project that correlates NYC yellow taxi trip volume with daily weather conditions. Raw data is ingested from two public sources, aggregated in a PostgreSQL data warehouse, and exposed through a REST API with an interactive dashboard.
 
-**Data sources:** NYC TLC Parquet files + Open-Meteo historical weather API  
+**Data sources:** NYC TLC yellow taxi trip records (Parquet) · Open-Meteo historical weather API  
 **Stack:** PySpark · PostgreSQL · FastAPI · Chart.js · Docker Compose
 
 ## Architecture
 
+```
+NYC TLC Parquet  ─┐
+                   ├─▶  PySpark ETL  ─▶  PostgreSQL DWH  ─▶  FastAPI  ─▶  Browser (Chart.js)
+Open-Meteo API  ──┘
+                        staging.*            analytics.*
+```
+
+The pipeline runs in two phases:
+
+1. **Ingest** — downloads TLC Parquet files and Open-Meteo API responses to `/tmp`, loads raw records into `staging.fact_trip` and `staging.fact_weather`
+2. **Transform** — aggregates staging data into `analytics.daily_trips`, `analytics.daily_weather`, and `analytics.daily_correlation`
+
 See [docs/architecture/c4.md](docs/architecture/c4.md) for C4 Context and Container diagrams.
 
-```
-NYC TLC Parquet
-Open-Meteo API   →  PySpark ETL  →  PostgreSQL  →  FastAPI  →  Browser (Chart.js)
-```
-
-## Quick start (dev)
+## Quick start
 
 ```bash
 docker compose up -d
@@ -22,49 +29,80 @@ docker compose up -d
 
 | Service | URL |
 |---------|-----|
-| Frontend | http://localhost:8000/ |
-| Swagger UI | http://localhost:8000/docs |
-| Jupyter / PySpark | http://localhost:8888 |
+| Frontend / Dashboard | http://localhost:8000/ |
+| REST API (Swagger UI) | http://localhost:8000/docs |
 | PostgreSQL | localhost:5432 |
 
-## Run ETL
+## Running the ETL
+
+With the stack running, execute ingestion inside the ETL container:
 
 ```bash
-docker compose exec etl-runner /app/.venv/bin/python /app/main.py
+docker compose exec etl-runner uv run python main.py --year 2023 --start-month 1 --end-month 1
 ```
 
-## Run tests
+Arguments:
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--year` | `2023` | Calendar year to ingest |
+| `--start-month` | `1` | First month (inclusive) |
+| `--end-month` | `1` | Last month (inclusive) |
+
+> **Note:** the first month is written with `mode=overwrite`; subsequent months append. Re-running a partial range will duplicate data — always re-run the full range.
+
+## Running tests
 
 ```bash
-# Unit tests + coverage
-uv run pytest tests/unit/ -v --cov=src
+# Unit tests (no DB required)
+uv run pytest tests/unit/ -v
 
-# Performance tests (requires running API)
+# With coverage report
+uv run pytest tests/unit/ -v --cov=src --cov-fail-under=70
+
+# Performance / load tests (requires running API)
 uv run locust -f tests/performance/locustfile.py --headless -u 50 -r 10 --run-time 60s --host http://localhost:8000
 ```
 
-## Production
+## API endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/trips/daily` | Daily trip aggregates |
+| `GET` | `/api/weather/daily` | Daily weather aggregates |
+| `GET` | `/api/correlation/` | Joined trips + weather |
+| `GET` | `/api/health` | Health check |
+
+All list endpoints accept optional `start` and `end` query params (ISO date, e.g. `?start=2023-01-01&end=2023-01-31`).
+
+## Production deployment
 
 ```bash
 cp .env.example .env   # fill in credentials
 docker compose -f docker-compose.prod.yml up -d
 ```
 
-Prod exposes nginx on port 80. Frontend is served at `/`, API proxied at `/api/`.
+Production runs nginx on port 80 — frontend at `/`, API proxied at `/api/`. No ETL container is exposed; run ingestion manually as needed.
 
 ## Project layout
 
 ```
 src/
-  ingest/      PySpark ETL — TLC Parquet + Open-Meteo API → staging tables
+  ingest/      PySpark ETL — downloads TLC Parquet + Open-Meteo API → staging tables
   transform/   PySpark aggregation — staging → analytics tables
-  api/         FastAPI — reads analytics tables, exposes REST + Swagger
-  db/          schema.sql — idempotent DDL
-  frontend/    index.html — Chart.js dashboard
+  api/         FastAPI — REST endpoints + Swagger, reads analytics tables
+    routers/   trips.py · weather.py · correlation.py
+    models.py  Pydantic response schemas
+  db/          schema.sql — idempotent DDL for all tables
+  frontend/    index.html — single-file Chart.js dashboard (no build step)
 tests/
-  unit/        pytest with mocked DB
+  unit/        pytest, mocked DB via make_get_conn() — no real DB needed
   performance/ locust load tests
+docker/
+  Dockerfile.api   python:3.13-slim + uv
+  Dockerfile.etl   python:3.12-slim + JRE + uv
+  nginx.conf       reverse proxy config for prod
 docs/
-  architecture/  C4 diagrams (Mermaid)
-  tech_choices.md
+  architecture/    C4 diagrams (Mermaid)
+  tech_choices.md  Design rationale
 ```
