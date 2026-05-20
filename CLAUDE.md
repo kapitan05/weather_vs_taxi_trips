@@ -17,7 +17,7 @@ src/
   api/             # Phase 4 — FastAPI: reads analytics tables, exposes REST + Swagger
     routers/       # trips.py, weather.py, correlation.py
   db/              # schema.sql — idempotent DDL for all tables
-  frontend/        # Phase 5 — HTML/JS (Chart.js) served by nginx in prod
+  frontend/        # Phase 5 — single index.html + embedded Chart.js; no build step; FastAPI serves at / and /static/*
 tests/
   unit/            # pytest
   performance/     # locust
@@ -52,8 +52,14 @@ docker compose up -d                                  # dev  (Jupyter :8888, API
 docker compose -f docker-compose.test.yml up --abort-on-container-exit   # test
 docker compose -f docker-compose.prod.yml up -d       # prod (nginx :80, no Jupyter)
 
-# Run ingestion inside ETL container
-docker compose exec etl-runner /app/.venv/bin/python /app/main.py
+# Run ingestion inside ETL container (args: --year, --start-month, --end-month)
+docker compose exec etl-runner /app/.venv/bin/python /app/main.py \
+  --year 2024 --start-month 1 --end-month 3
+```
+
+Coverage threshold enforced at 70%:
+```bash
+uv run pytest tests/unit/ -v --cov=src --cov-fail-under=70
 ```
 
 ## Env Vars
@@ -74,6 +80,8 @@ Two separate sets — `.env.example` only documents compose service vars, not th
 - **prod credentials** come from a `.env` file (see `docker-compose.prod.yml`); dev uses hardcoded values.
 - `db-init` service runs `schema.sql` once on `docker compose up`; it depends on `postgres-dwh` being healthy.
 - **Ingest overwrite/append**: `main.py` writes first month with `mode="overwrite"`, subsequent months with `"append"`. Re-running the same range is idempotent only if the full range is identical; partial re-runs will duplicate data.
-- **Tests**: `conftest.py` patches `init_pool`/`close_pool` globally; inject fake DB rows via `make_get_conn()` — no real DB needed for unit tests.
+- **Tests**: `conftest.py` patches `init_pool`/`close_pool` globally; inject fake DB rows via `make_get_conn(rows, columns)` factory which returns a mock psycopg2 cursor — no real DB needed.
+- **Router response mapping**: all routers build dicts dynamically from `cursor.description` (column introspection) — do not hardcode column names in SQL result mapping. Response schemas in `src/api/models.py`: `DailyTrips`, `DailyWeather`, `DailyCorrelation`.
+- **Weather ingest**: fixed NYC coords lat=40.7128, lon=-74.0060; hourly fields: temperature_2m, precipitation, weathercode. Retry: 3 attempts, exponential backoff, on HTTP 429/500–504.
 - **No linting config**: `pyproject.toml` only has `[tool.pytest.ini_options]`; no ruff/black/pylint rules configured.
 - **CORS**: API allows all origins (`allow_origins=["*"]`) — intentional for dev/demo.
