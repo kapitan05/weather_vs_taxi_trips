@@ -1,20 +1,20 @@
-FROM jupyter/pyspark-notebook:latest
+FROM python:3.12-slim
 
-USER root
+RUN apt-get update && \
+    apt-get install -y default-jre-headless && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
+
 
 RUN pip install uv --no-cache-dir
 
+
 COPY pyproject.toml uv.lock ./
-RUN uv sync --no-dev --frozen -v
+RUN uv sync --no-dev --frozen
 
 COPY src/ ./src/
 COPY main.py ./
 
-RUN wget -q https://repo1.maven.org/maven2/org/postgresql/postgresql/42.6.0/postgresql-42.6.0.jar \
-    -O /home/jovyan/work/postgresql-42.6.0.jar
-
-RUN chown -R jovyan:users /app && \
-    fix-permissions /home/jovyan
-
-USER jovyan
+CMD ["tail", "-f", "/dev/null"]

@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 def build_spark() -> SparkSession:
     return (
         SparkSession.builder.appName("NYCTaxiWeatherIngestion")
-        .config("spark.jars", "/home/jovyan/work/postgresql-42.6.0.jar")
+        .config("spark.jars.packages", "org.postgresql:postgresql:42.6.0")
         .getOrCreate()
     )
 

@@ -39,10 +39,8 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.etl
-    image: custom-pyspark-etl
+    image: custom-pyspark-etl-lean
     container_name: pyspark_etl
-    ports:
-      - "8888:8888"
     volumes:
       - ./src:/app/src
       - ./main.py:/app/main.py
@@ -50,8 +48,6 @@ services:
     depends_on:
       postgres-dwh:
         condition: service_healthy
-      db-init:
-        condition: service_completed_successfully
     networks:
       - data-network
 

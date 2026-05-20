@@ -3,7 +3,7 @@ name = "weather-vs-taxi-trips"
 version = "0.1.0"
 description = "Correlation analysis between NYC weather conditions and yellow taxi trips"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.12, <3.13"
 dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.34.0",
