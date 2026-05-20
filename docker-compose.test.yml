@@ -1,0 +1,57 @@
+version: '3.8'
+
+# TEST environment — ephemeral DB, runs pytest + locust then exits
+
+services:
+  postgres-dwh:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: data_engineer
+      POSTGRES_PASSWORD: password123
+      POSTGRES_DB: nyc_weather_taxi_test
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U data_engineer -d nyc_weather_taxi_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - test-network
+
+  db-init:
+    image: postgres:15-alpine
+    depends_on:
+      postgres-dwh:
+        condition: service_healthy
+    volumes:
+      - ./src/db/schema.sql:/schema.sql:ro
+    command: psql -h postgres-dwh -U data_engineer -d nyc_weather_taxi_test -f /schema.sql
+    environment:
+      PGPASSWORD: password123
+    networks:
+      - test-network
+
+  test-runner:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    command: >
+      uv run pytest tests/unit/ -v
+        --cov=src
+        --cov-report=term-missing
+        --cov-fail-under=70
+    environment:
+      - DB_HOST=postgres-dwh
+      - DB_NAME=nyc_weather_taxi_test
+      - DB_USER=data_engineer
+      - DB_PASSWORD=password123
+    depends_on:
+      postgres-dwh:
+        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
+    networks:
+      - test-network
+
+networks:
+  test-network:
+    driver: bridge

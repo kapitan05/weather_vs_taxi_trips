@@ -1,0 +1,22 @@
+[project]
+name = "weather-vs-taxi-trips"
+version = "0.1.0"
+description = "Correlation analysis between NYC weather conditions and yellow taxi trips"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.34.0",
+    "pandas>=3.0.3",
+    "psycopg2-binary>=2.9.12",
+    "pyspark>=4.1.1",
+    "requests>=2.34.2",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.0",
+    "locust>=2.0.0",
+    "pytest>=8.0.0",
+    "pytest-cov>=6.0.0",
+]

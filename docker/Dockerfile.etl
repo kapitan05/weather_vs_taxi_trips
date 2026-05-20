@@ -1,0 +1,12 @@
+FROM jupyter/pyspark-notebook:latest
+
+USER root
+WORKDIR /app
+
+# Install only the deps not bundled in the base image
+RUN pip install requests psycopg2-binary --no-cache-dir
+
+COPY src/ ./src/
+COPY main.py ./
+
+CMD ["python", "main.py"]

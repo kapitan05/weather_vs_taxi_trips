@@ -1,0 +1,81 @@
+version: '3.8'
+
+# DEV environment — Jupyter/PySpark exposed for interactive work, hot-reload on API
+
+services:
+  postgres-dwh:
+    image: postgres:15-alpine
+    container_name: nyc_taxi_dwh
+    environment:
+      POSTGRES_USER: data_engineer
+      POSTGRES_PASSWORD: password123
+      POSTGRES_DB: nyc_weather_taxi
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U data_engineer -d nyc_weather_taxi"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - data-network
+
+  db-init:
+    image: postgres:15-alpine
+    depends_on:
+      postgres-dwh:
+        condition: service_healthy
+    volumes:
+      - ./src/db/schema.sql:/schema.sql:ro
+    command: psql -h postgres-dwh -U data_engineer -d nyc_weather_taxi -f /schema.sql
+    environment:
+      PGPASSWORD: password123
+    networks:
+      - data-network
+
+  etl-runner:
+    image: jupyter/pyspark-notebook:latest
+    container_name: pyspark_etl
+    user: root
+    ports:
+      - "8888:8888"
+    volumes:
+      - .:/app
+    working_dir: /app
+    depends_on:
+      postgres-dwh:
+        condition: service_healthy
+    networks:
+      - data-network
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    container_name: nyc_taxi_api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./src:/app/src   # hot-reload in dev
+    depends_on:
+      postgres-dwh:
+        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
+    environment:
+      - DB_HOST=postgres-dwh
+      - DB_NAME=nyc_weather_taxi
+      - DB_USER=data_engineer
+      - DB_PASSWORD=password123
+    command: ["uv", "run", "uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    networks:
+      - data-network
+
+volumes:
+  pgdata:
+
+networks:
+  data-network:
+    driver: bridge

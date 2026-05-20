@@ -1,0 +1,75 @@
+version: '3.8'
+
+# PROD environment — no Jupyter, nginx reverse proxy, env vars from .env file, restart policies
+
+services:
+  postgres-dwh:
+    image: postgres:15-alpine
+    container_name: nyc_taxi_dwh_prod
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata_prod:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: always
+    networks:
+      - prod-network
+
+  db-init:
+    image: postgres:15-alpine
+    depends_on:
+      postgres-dwh:
+        condition: service_healthy
+    volumes:
+      - ./src/db/schema.sql:/schema.sql:ro
+    command: psql -h postgres-dwh -U ${POSTGRES_USER} -d ${POSTGRES_DB} -f /schema.sql
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+    networks:
+      - prod-network
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    container_name: nyc_taxi_api_prod
+    restart: always
+    environment:
+      - DB_HOST=postgres-dwh
+      - DB_NAME=${POSTGRES_DB}
+      - DB_USER=${POSTGRES_USER}
+      - DB_PASSWORD=${POSTGRES_PASSWORD}
+    depends_on:
+      postgres-dwh:
+        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
+    networks:
+      - prod-network
+
+  nginx:
+    image: nginx:alpine
+    container_name: nyc_nginx_prod
+    ports:
+      - "80:80"
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./src/frontend:/usr/share/nginx/html:ro
+    depends_on:
+      - api
+    restart: always
+    networks:
+      - prod-network
+
+volumes:
+  pgdata_prod:
+
+networks:
+  prod-network:
+    driver: bridge
