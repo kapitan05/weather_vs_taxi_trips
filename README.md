@@ -30,7 +30,7 @@ docker compose up -d
 ## Run ETL
 
 ```bash
-docker compose exec etl-runner python /app/main.py
+docker compose exec etl-runner /app/.venv/bin/python /app/main.py
 ```
 
 ## Run tests

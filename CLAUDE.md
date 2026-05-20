@@ -51,7 +51,7 @@ docker compose -f docker-compose.test.yml up --abort-on-container-exit   # test
 docker compose -f docker-compose.prod.yml up -d       # prod (nginx :80, no Jupyter)
 
 # Run ingestion inside ETL container
-docker compose exec etl-runner python /app/main.py
+docker compose exec etl-runner /app/.venv/bin/python /app/main.py
 ```
 
 ## Key Constraints
