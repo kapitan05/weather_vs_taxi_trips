@@ -11,4 +11,4 @@ RUN uv sync --no-dev --frozen
 COPY src/ ./src/
 COPY main.py ./
 
-CMD ["python", "main.py"]
+CMD ["uv", "run", "python", "main.py"]

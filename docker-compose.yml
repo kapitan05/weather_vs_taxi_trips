@@ -36,14 +36,17 @@ services:
       - data-network
 
   etl-runner:
-    image: jupyter/pyspark-notebook:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.etl
+    image: custom-pyspark-etl
     container_name: pyspark_etl
     user: root
     ports:
       - "8888:8888"
     volumes:
-      - .:/app
-      - etl_venv:/app/.venv
+      - ./src:/app/src
+      - ./main.py:/app/main.py
     working_dir: /app
     depends_on:
       postgres-dwh:
