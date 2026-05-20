@@ -43,6 +43,7 @@ services:
       - "8888:8888"
     volumes:
       - .:/app
+      - etl_venv:/app/.venv
     working_dir: /app
     depends_on:
       postgres-dwh:
@@ -75,6 +76,7 @@ services:
 
 volumes:
   pgdata:
+  etl_venv:
 
 networks:
   data-network:
