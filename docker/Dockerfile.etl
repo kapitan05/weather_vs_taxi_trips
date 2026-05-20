@@ -11,4 +11,6 @@ RUN uv sync --no-dev --frozen
 COPY src/ ./src/
 COPY main.py ./
 
-CMD ["uv", "run", "python", "main.py"]
+RUN chown -R jovyan:users /app
+
+USER jovyan

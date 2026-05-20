@@ -41,7 +41,6 @@ services:
       dockerfile: docker/Dockerfile.etl
     image: custom-pyspark-etl
     container_name: pyspark_etl
-    user: root
     ports:
       - "8888:8888"
     volumes:
