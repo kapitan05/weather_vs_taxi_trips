@@ -69,16 +69,23 @@ def ingest_weather_data(spark: SparkSession, year: int, month: int, mode: str = 
         }
     )
 
-    df_weather = spark.createDataFrame(df_pandas)
-    count = len(df_pandas)
+    local_path = f"/tmp/weather_{year:04d}_{month:02d}.parquet"
+    df_pandas.to_parquet(local_path, index=False)
+    logger.info("Saved weather parquet", extra={"dest": local_path, "rows": len(df_pandas)})
 
-    logger.info("Writing weather records", extra={"count": count, "table": "staging.fact_weather", "mode": mode})
-    df_weather.write.jdbc(
-        url=DB_URL,
-        table="staging.fact_weather",
-        mode=mode,
-        properties=DB_PROPERTIES,
-    )
+    try:
+        df_weather = spark.read.parquet(local_path)
+        count = df_weather.count()
+
+        logger.info("Writing weather records", extra={"count": count, "table": "staging.fact_weather", "mode": mode})
+        df_weather.write.jdbc(
+            url=DB_URL,
+            table="staging.fact_weather",
+            mode=mode,
+            properties=DB_PROPERTIES,
+        )
+    finally:
+        os.remove(local_path)
 
     logger.info("Weather ingestion complete", extra={"year": year, "month": month, "written": count})
     return count

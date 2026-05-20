@@ -1,6 +1,7 @@
 import logging
 import os
 
+import requests
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col
 
@@ -18,27 +19,37 @@ DB_PROPERTIES = {
 
 def ingest_tlc_data(spark: SparkSession, year: int, month: int, mode: str = "overwrite") -> int:
     url = TLC_BASE_URL.format(year=year, month=month)
-    logger.info("Starting TLC ingestion", extra={"url": url, "year": year, "month": month})
+    local_path = f"/tmp/yellow_tripdata_{year:04d}-{month:02d}.parquet"
+    logger.info("Downloading TLC parquet", extra={"url": url, "dest": local_path})
 
-    df_raw = spark.read.parquet(url)
-    raw_count = df_raw.count()
-    logger.info("Raw record count", extra={"count": raw_count, "year": year, "month": month})
+    with requests.get(url, stream=True, timeout=120) as r:
+        r.raise_for_status()
+        with open(local_path, "wb") as f:
+            for chunk in r.iter_content(chunk_size=1024 * 1024):
+                f.write(chunk)
 
-    df_clean = df_raw.filter(
-        (col("total_amount") > 0)
-        & (col("trip_distance") > 0)
-        & (col("passenger_count") > 0)
-    )
+    try:
+        df_raw = spark.read.parquet(local_path)
+        raw_count = df_raw.count()
+        logger.info("Raw record count", extra={"count": raw_count, "year": year, "month": month})
 
-    count = df_clean.count()
-    logger.info("Writing clean records", extra={"count": count, "table": "staging.fact_trip", "mode": mode})
+        df_clean = df_raw.filter(
+            (col("total_amount") > 0)
+            & (col("trip_distance") > 0)
+            & (col("passenger_count") > 0)
+        )
 
-    df_clean.write.jdbc(
-        url=DB_URL,
-        table="staging.fact_trip",
-        mode=mode,
-        properties=DB_PROPERTIES,
-    )
+        count = df_clean.count()
+        logger.info("Writing clean records", extra={"count": count, "table": "staging.fact_trip", "mode": mode})
+
+        df_clean.write.jdbc(
+            url=DB_URL,
+            table="staging.fact_trip",
+            mode=mode,
+            properties=DB_PROPERTIES,
+        )
+    finally:
+        os.remove(local_path)
 
     logger.info("TLC ingestion complete", extra={"year": year, "month": month, "written": count})
     return count
