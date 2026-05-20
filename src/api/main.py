@@ -3,7 +3,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from src.api.db import close_pool, init_pool
 from src.api.routers.correlation import router as correlation_router
@@ -48,3 +49,11 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
 @app.get("/api/health", tags=["meta"])
 def health() -> dict:
     return {"status": "ok"}
+
+
+@app.get("/", include_in_schema=False)
+def frontend():
+    return FileResponse("src/frontend/index.html")
+
+
+app.mount("/static", StaticFiles(directory="src/frontend"), name="frontend")
