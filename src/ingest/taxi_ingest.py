@@ -6,7 +6,7 @@ from pyspark.sql.functions import col
 
 logger = logging.getLogger(__name__)
 
-TLC_URL = "https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2023-01.parquet"
+TLC_BASE_URL = "https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_{year:04d}-{month:02d}.parquet"
 
 DB_URL = os.getenv("DB_URL", "jdbc:postgresql://postgres-dwh:5432/nyc_weather_taxi")
 DB_PROPERTIES = {
@@ -16,14 +16,13 @@ DB_PROPERTIES = {
 }
 
 
-def ingest_tlc_data(spark: SparkSession) -> int:
-    """Read TLC yellow taxi Parquet, filter invalid rows, write to staging.fact_trip.
+def ingest_tlc_data(spark: SparkSession, year: int, month: int, mode: str = "overwrite") -> int:
+    url = TLC_BASE_URL.format(year=year, month=month)
+    logger.info("Starting TLC ingestion", extra={"url": url, "year": year, "month": month})
 
-    Returns the number of records written.
-    """
-    logger.info("Starting TLC ingestion from %s", TLC_URL)
-    df_raw = spark.read.parquet(TLC_URL)
-    logger.info("Raw record count: %d", df_raw.count())
+    df_raw = spark.read.parquet(url)
+    raw_count = df_raw.count()
+    logger.info("Raw record count", extra={"count": raw_count, "year": year, "month": month})
 
     df_clean = df_raw.filter(
         (col("total_amount") > 0)
@@ -32,14 +31,14 @@ def ingest_tlc_data(spark: SparkSession) -> int:
     )
 
     count = df_clean.count()
-    logger.info("Writing %d clean records to staging.fact_trip", count)
+    logger.info("Writing clean records", extra={"count": count, "table": "staging.fact_trip", "mode": mode})
 
     df_clean.write.jdbc(
         url=DB_URL,
         table="staging.fact_trip",
-        mode="overwrite",
+        mode=mode,
         properties=DB_PROPERTIES,
     )
 
-    logger.info("TLC ingestion complete")
+    logger.info("TLC ingestion complete", extra={"year": year, "month": month, "written": count})
     return count
