@@ -64,6 +64,13 @@ uv run pytest tests/unit/ -v --cov=src --cov-fail-under=70
 uv run locust -f tests/performance/locustfile.py --headless -u 50 -r 10 --run-time 60s --host http://localhost:8000
 ```
 
+Docker alternative
+
+```bash
+docker compose -f docker-compose.test.yml run --rm test-runner
+```
+
+
 ## API endpoints
 
 | Method | Path | Description |

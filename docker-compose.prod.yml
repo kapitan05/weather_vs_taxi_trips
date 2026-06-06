@@ -57,7 +57,7 @@ services:
     image: nginx:alpine
     container_name: nyc_nginx_prod
     ports:
-      - "80:80"
+      - "8080:80"
     volumes:
       - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./src/frontend:/usr/share/nginx/html:ro
