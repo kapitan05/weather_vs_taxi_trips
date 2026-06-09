@@ -15,7 +15,7 @@ C4Context
     System(system, "Weather vs Taxi Trips", "End-to-end data pipeline that ingests, processes, and visualises NYC taxi and weather data.")
 
     System_Ext(tlc, "NYC TLC Open Data", "Publishes monthly yellow taxi trip records as Parquet files on a public CDN.")
-    System_Ext(meteo, "Open-Meteo Archive API", "Provides free historical hourly weather observations (temperature, precipitation, weather code) for any location.")
+    System_Ext(meteo, "Open-Meteo Archive API", "Provides free historical hourly weather observations (temperature, precipitation, weather code) for NYC coordinates.")
 
     Rel(analyst, system, "Views correlation dashboard", "HTTPS / Browser")
     Rel(system, tlc, "Downloads monthly Parquet files", "HTTPS")
@@ -46,9 +46,9 @@ C4Container
     System_Ext(meteo, "Open-Meteo Archive API")
 
     Rel(analyst, nginx, "Opens browser", "HTTPS :80")
-    Rel(nginx, frontend, "Serves static files", "file system")
+    Rel(nginx, frontend, "Serves static files at /", "file system")
     Rel(nginx, api, "Proxies /api/* requests", "HTTP")
-    Rel(frontend, nginx, "Fetches /api/correlation/", "HTTP / JSON")
+    Rel(frontend, nginx, "Fetches /api/* endpoints", "HTTP / JSON")
     Rel(api, db, "Reads analytics.daily_*", "psycopg2 · SQL")
     Rel(etl, db, "Writes staging.* then analytics.*", "JDBC · SQL")
     Rel(etl, tlc, "Downloads yellow_tripdata_YYYY-MM.parquet", "HTTPS")
@@ -103,10 +103,10 @@ C4Component
     ContainerDb_Ext(db, "PostgreSQL 15", "Data Warehouse")
 
     Container_Boundary(etl, "PySpark ETL") {
-        Component(entry, "Entry Point", "main.py", "Creates the Spark session and iterates over the requested year/month range, calling ingest then transform.")
+        Component(entry, "Entry Point", "main.py", "Creates the Spark session and orchestrates the batch ingestion and transformation processes based on provided date arguments.")
         Component(log, "JSON Logger", "src/ingest/logging_config.py", "Configures the root logger with a custom JsonFormatter so all log output is structured JSON lines.")
-        Component(taxi, "Taxi Ingestor", "src/ingest/taxi_ingest.py", "Downloads the monthly TLC Parquet via Spark, drops rows with zero fare / distance / passengers, writes to staging.fact_trip (JDBC, mode=overwrite).")
-        Component(weather, "Weather Ingestor", "src/ingest/weather_ingest.py", "Calls Open-Meteo with retry/backoff, validates the response schema, converts hourly records to a Spark DataFrame, writes to staging.fact_weather.")
+        Component(taxi, "Taxi Ingestor", "src/ingest/taxi_ingest.py", "Downloads the monthly TLC Parquet via Spark, cleans invalid rows (e.g., zero passengers or negative fare), writes to staging.fact_trip (JDBC, mode=overwrite).")
+        Component(weather, "Weather Ingestor", "src/ingest/weather_ingest.py", "Calls Open-Meteo with exponential backoff and retry mechanisms, validates the response schema, converts hourly records to a Spark DataFrame, writes to staging.fact_weather.")
         Component(pipeline, "Transform Pipeline", "src/transform/pipeline.py", "Reads both staging tables, computes daily aggregates (trip_count, avg_fare, avg_distance, avg_passengers, avg_temperature, total_precipitation, dominant_weathercode), joins on date, writes analytics.daily_trips / daily_weather / daily_correlation.")
     }
 
