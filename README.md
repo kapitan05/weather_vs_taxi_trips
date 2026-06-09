@@ -89,7 +89,26 @@ cp .env.example .env   # fill in credentials
 docker compose -f docker-compose.prod.yml up -d
 ```
 
-Production runs nginx on port 80 — frontend at `/`, API proxied at `/api/`. No ETL container is exposed; run ingestion manually as needed.
+| Service | URL |
+|---------|-----|
+| Frontend / Dashboard | http://localhost:8082/ |
+| REST API (Swagger UI) | http://localhost:8082/docs |
+
+nginx proxies `/api/` to FastAPI and serves the frontend at `/`. The API port (8000) is not exposed directly in prod.
+
+### Running the ETL in production
+
+```bash
+docker compose -f docker-compose.prod.yml exec etl-runner \
+  uv run python main.py --year 2023 --start-month 1 --end-month 1
+```
+
+### Fresh start / reset
+
+```bash
+docker compose -f docker-compose.prod.yml down -v   # removes containers and pgdata_prod volume
+docker compose -f docker-compose.prod.yml up -d
+```
 
 ## Project layout
 
